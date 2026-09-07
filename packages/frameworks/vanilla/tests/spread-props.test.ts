@@ -263,7 +263,55 @@ describe("spreadProps", () => {
       const div = document.createElement("div")
       spreadProps(div, { style: "color:red;font-size:16px;" })
 
-      expect(div.getAttribute("style")).toBe("color:red;font-size:16px;")
+      expect(div.style.color).toBe("red")
+      expect(div.style.fontSize).toBe("16px")
+    })
+
+    test("removes properties that are no longer present", () => {
+      const div = document.createElement("div")
+      spreadProps(div, { style: "color:red;font-size:16px;" })
+
+      spreadProps(div, { style: "color:red;" })
+      expect(div.style.color).toBe("red")
+      expect(div.style.fontSize).toBe("")
+    })
+
+    test("clears all managed properties when style is removed from attrs", () => {
+      const div = document.createElement("div")
+      spreadProps(div, { style: "color:red;" })
+      expect(div.style.color).toBe("red")
+
+      spreadProps(div, {})
+      expect(div.style.color).toBe("")
+    })
+
+    test("does not clobber inline styles set outside of spreadProps", () => {
+      const div = document.createElement("div")
+
+      // e.g. Zag's dismissable/layer-stack module tagging an element directly
+      div.style.setProperty("--layer-index", "1")
+
+      spreadProps(div, { style: "pointer-events:none;" })
+      expect(div.style.getPropertyValue("--layer-index")).toBe("1")
+
+      // a re-render whose computed style string changes (e.g. a dialog opening)
+      spreadProps(div, { style: "" })
+      expect(div.style.getPropertyValue("--layer-index")).toBe("1")
+      expect(div.style.pointerEvents).toBe("")
+    })
+
+    test("scopes managed style properties per machineId", () => {
+      const div = document.createElement("div")
+
+      spreadProps(div, { style: "color:red;" }, "machine-a")
+      spreadProps(div, { style: "font-size:16px;" }, "machine-b")
+
+      expect(div.style.color).toBe("red")
+      expect(div.style.fontSize).toBe("16px")
+
+      spreadProps(div, {}, "machine-a")
+      expect(div.style.color).toBe("")
+      expect(div.style.fontSize).toBe("16px")
     })
   })
 })

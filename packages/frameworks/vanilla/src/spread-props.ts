@@ -4,6 +4,11 @@ export interface Attrs {
 
 const prevAttrsMap = new WeakMap<Element, Map<string, Attrs>>()
 
+// CSS property names previously applied to an element's inline style by `spreadProps` itself,
+// keyed like `prevAttrsMap`. Tracked separately so the `style` prop can be reconciled property by
+// property instead of replacing the whole `style` attribute.
+const prevStylePropsMap = new WeakMap<Element, Map<string, Set<string>>>()
+
 const assignableProps = new Set<string>(["value", "checked", "selected"])
 
 // SVG attributes that need to preserve case
@@ -30,6 +35,45 @@ const isSvgElement = (node: Element): boolean => {
 const getAttributeName = (node: Element, attrName: string): string => {
   const shouldPreserveCase = isSvgElement(node) && caseSensitiveSvgAttrs.has(attrName)
   return shouldPreserveCase ? attrName : attrName.toLowerCase()
+}
+
+// Parses a `prop:value;` style string back into a map
+const parseStyleString = (style: string): Map<string, string> => {
+  const result = new Map<string, string>()
+  for (const decl of style.split(";")) {
+    const separator = decl.indexOf(":")
+    if (separator === -1) continue
+    const prop = decl.slice(0, separator).trim()
+    const value = decl.slice(separator + 1).trim()
+    if (prop) result.set(prop, value)
+  }
+  return result
+}
+
+// Reconciles the element's inline style against only the CSS properties Zag previously applied
+// for this scope, adding/updating/removing exactly those - never touching any other property that
+// may be present on the element's `style`.
+const applyStyle = (node: Element, style: unknown, scopeKey: string): void => {
+  if (!("style" in node)) return
+  const declaration = (node as HTMLElement).style
+
+  let machineMap = prevStylePropsMap.get(node)
+  if (!machineMap) {
+    machineMap = new Map<string, Set<string>>()
+    prevStylePropsMap.set(node, machineMap)
+  }
+
+  const prevProps = machineMap.get(scopeKey) ?? new Set<string>()
+  const nextProps = parseStyleString(typeof style === "string" ? style : "")
+
+  for (const prop of prevProps) {
+    if (!nextProps.has(prop)) declaration.removeProperty(prop)
+  }
+  for (const [prop, value] of nextProps) {
+    declaration.setProperty(prop, value)
+  }
+
+  machineMap.set(scopeKey, new Set(nextProps.keys()))
 }
 
 export function spreadProps(node: Element, attrs: Attrs, machineId?: string): () => void {
@@ -71,6 +115,12 @@ export function spreadProps(node: Element, attrs: Attrs, machineId?: string): ()
       return
     }
 
+    // Reconcile style property-by-property instead of replacing the whole attribute
+    if (attrName === "style") {
+      applyStyle(node, value, scopeKey)
+      return
+    }
+
     // Handle DOM properties (value, checked, etc.) - must come before boolean check
     if (assignableProps.has(attrName)) {
       ;(node as any)[attrName] = value ?? ""
@@ -103,6 +153,8 @@ export function spreadProps(node: Element, attrs: Attrs, machineId?: string): ()
     if (attrs[key] == null) {
       if (key === "class") {
         ;(node as HTMLElement).className = ""
+      } else if (key === "style") {
+        applyStyle(node, undefined, scopeKey)
       } else if (assignableProps.has(key)) {
         ;(node as any)[key] = ""
       } else {
@@ -128,6 +180,13 @@ export function spreadProps(node: Element, attrs: Attrs, machineId?: string): ()
       currentMachineMap.delete(scopeKey)
       if (currentMachineMap.size === 0) {
         prevAttrsMap.delete(node)
+      }
+    }
+    const currentStyleMap = prevStylePropsMap.get(node)
+    if (currentStyleMap) {
+      currentStyleMap.delete(scopeKey)
+      if (currentStyleMap.size === 0) {
+        prevStylePropsMap.delete(node)
       }
     }
   }
