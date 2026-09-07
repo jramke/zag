@@ -300,6 +300,18 @@ describe("spreadProps", () => {
       expect(div.style.pointerEvents).toBe("")
     })
 
+    test("preserves values containing semicolons", () => {
+      const div = document.createElement("div")
+
+      spreadProps(div, {
+        style: `content:"a;b";background-image:url("data:image/svg+xml;base64,PHN2Zz0=");color:red;`,
+      })
+
+      expect(div.style.content).toBe('"a;b"')
+      expect(div.style.backgroundImage).toBe('url("data:image/svg+xml;base64,PHN2Zz0=")')
+      expect(div.style.color).toBe("red")
+    })
+
     test("scopes managed style properties per machineId", () => {
       const div = document.createElement("div")
 

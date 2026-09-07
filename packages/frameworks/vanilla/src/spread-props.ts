@@ -37,15 +37,19 @@ const getAttributeName = (node: Element, attrName: string): string => {
   return shouldPreserveCase ? attrName : attrName.toLowerCase()
 }
 
+// Scratch element reused to parse style strings via the browser's own CSS parser (see
+// `parseStyleString`) rather than a naive `;`-split, which would break on a semicolon that's part
+// of a value itself (e.g. `content: "a;b"`, or a `data:` URI's `;base64,`).
+const styleParserEl = typeof document !== "undefined" ? document.createElement("div") : null
+
 // Parses a `prop:value;` style string back into a map
 const parseStyleString = (style: string): Map<string, string> => {
   const result = new Map<string, string>()
-  for (const decl of style.split(";")) {
-    const separator = decl.indexOf(":")
-    if (separator === -1) continue
-    const prop = decl.slice(0, separator).trim()
-    const value = decl.slice(separator + 1).trim()
-    if (prop) result.set(prop, value)
+  if (!styleParserEl) return result
+  styleParserEl.style.cssText = style
+  for (let i = 0; i < styleParserEl.style.length; i++) {
+    const prop = styleParserEl.style.item(i)
+    result.set(prop, styleParserEl.style.getPropertyValue(prop))
   }
   return result
 }
