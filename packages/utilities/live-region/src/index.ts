@@ -35,6 +35,10 @@ const HIDDEN_STYLES = {
   wordWrap: "normal",
 }
 
+// The region is shared by every instance of the same level and document, so destroy() only
+// removes it once the last of them is gone.
+const users = new WeakMap<Element, number>()
+
 export function createLiveRegion(opts: Partial<LiveRegionOptions> = {}) {
   const {
     level = "polite",
@@ -122,13 +126,21 @@ export function createLiveRegion(opts: Partial<LiveRegionOptions> = {}) {
   function destroy() {
     win.clearTimeout(announceTimer)
     win.clearTimeout(clearTimer)
+    if (destroyed) return
+    destroyed = true
 
-    doc.getElementById(ID)?.remove()
+    const left = (users.get(shared) ?? 1) - 1
+    users.set(shared, left)
+    if (left > 0) return
+
+    shared.remove()
     doc.getElementById(DEBUG_ID)?.remove()
   }
 
   // the region has to exist well before the first announcement
-  getRegion()
+  const shared = getRegion()
+  users.set(shared, (users.get(shared) ?? 0) + 1)
+  let destroyed = false
 
   return {
     announce,
