@@ -1,10 +1,9 @@
 ---
-"@zag-js/radio-group": patch
-"@zag-js/file-upload": patch
-"@zag-js/slider": patch
-"@zag-js/angle-slider": patch
+"@zag-js/radio-group": major
+"@zag-js/file-upload": major
+"@zag-js/slider": major
+"@zag-js/angle-slider": major
 ---
 
-Fix the hidden input to follow the native form rule: only a disabled component leaves the form. A read-only radio group
-and file upload now submit their value, and a disabled slider and angle slider no longer do. This changes the submitted
-form data for these cases.
+- Submit the value of a read-only radio group or file upload; only a disabled one is left out of the form.
+- Leave a disabled slider or angle slider out of the form.
