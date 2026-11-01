@@ -79,7 +79,7 @@ export const machine = createMachine<FileUploadSchema>({
     "FILE.SELECT": {
       actions: ["setEventFiles"],
     },
-    // focus is checked before removing, since the removed item's delete trigger unmounts with it
+    // focus first: the delete trigger unmounts with its item
     "FILE.DELETE": {
       actions: ["restoreFocusAfterDelete", "removeFile", "announceFileDeleted"],
     },
@@ -158,7 +158,7 @@ export const machine = createMachine<FileUploadSchema>({
         return callAll(addDomEvent(doc, "dragover", onDragOver, false), addDomEvent(doc, "drop", onDrop, false))
       },
       trackLiveRegion({ refs, scope }) {
-        // inside the root, so it is still announced when the file upload is in a modal dialog
+        // inside the root so a modal doesn't hide it
         const liveRegion = createLiveRegion({
           level: "polite",
           document: scope.getDoc(),
@@ -209,7 +209,6 @@ export const machine = createMachine<FileUploadSchema>({
         const set = (files: File[]) => {
           const multiple = computed("multiple")
           const added = multiple ? files : files.slice(0, 1)
-          // a single-file upload keeps its current file when nothing new was accepted or rejected
           if (!multiple && !added.length && !rejectedFiles.length) return
 
           if (multiple) context.set("acceptedFiles", (prev) => [...prev, ...added])
@@ -249,10 +248,10 @@ export const machine = createMachine<FileUploadSchema>({
         const files =
           itemType === "rejected" ? context.get("rejectedFiles").map((item) => item.file) : context.get("acceptedFiles")
         const index = files.findIndex((file) => isFileEqual(file, event.file))
-        // only when the removed item's own delete trigger has focus, so `api.deleteFile()` doesn't move it
+        // skip programmatic deletes
         const triggerEl = dom.getItemDeleteTriggerEls(scope, itemType)[index]
         if (index === -1 || !contains(triggerEl, scope.getActiveElement())) return
-        // after the re-render, the next item sits at `index`, or the previous one if the last was removed
+        // next item, or the previous one if the last was removed
         refs.get("focusFrame").request(() => {
           const remaining = dom.getItemDeleteTriggerEls(scope, itemType)
           const target = remaining[Math.min(index, remaining.length - 1)] ?? dom.getFallbackFocusEl(scope)

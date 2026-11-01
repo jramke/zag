@@ -96,9 +96,6 @@ export function setInputFiles(inputEl: HTMLInputElement, files: File[]) {
   }
 }
 
-/**
- * Announces a message to screen readers.
- */
 export function announce(
   ctx: Params<FileUploadSchema>,
   getMessage: (translations: Required<IntlTranslations>) => string,

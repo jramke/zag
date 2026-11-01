@@ -27,5 +27,4 @@ export const getClearTriggerEl = (ctx: Scope) => ctx.query<HTMLElement>(ctx.sele
 export const getItemDeleteTriggerEls = (ctx: Scope, type: ItemType) =>
   ctx.queryAll<HTMLElement>(`${ctx.selector(parts.itemDeleteTrigger)}[data-type="${type}"]`)
 
-/** Where focus goes when the focused control is removed */
 export const getFallbackFocusEl = (ctx: Scope) => getTriggerEl(ctx) || getDropzoneEl(ctx)
