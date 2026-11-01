@@ -95,7 +95,7 @@ test.describe("file-upload", () => {
     await I.controls.num("maxFiles", "3")
     await I.uploadFiles(["a.txt", "b.txt", "c.txt"])
 
-    await I.seeAnnouncement("a.txt, b.txt and c.txt added")
+    await I.seeAnnouncement("a.txt, b.txt, c.txt added")
   })
 
   test("should announce the deleted file", async () => {

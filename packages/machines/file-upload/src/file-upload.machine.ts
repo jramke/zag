@@ -1,5 +1,5 @@
 import { createMachine } from "@zag-js/core"
-import { addDomEvent, contains, getEventTarget, raf } from "@zag-js/dom-query"
+import { addDomEvent, AnimationFrame, contains, getEventTarget, raf } from "@zag-js/dom-query"
 import { getAcceptAttrString, isFileEqual } from "@zag-js/file-utils"
 import { createLiveRegion } from "@zag-js/live-region"
 import { callAll, warn } from "@zag-js/utils"
@@ -27,6 +27,7 @@ export const machine = createMachine<FileUploadSchema>({
   refs() {
     return {
       liveRegion: null,
+      focusFrame: AnimationFrame.create(),
     }
   },
 
@@ -78,16 +79,19 @@ export const machine = createMachine<FileUploadSchema>({
     "FILE.SELECT": {
       actions: ["setEventFiles"],
     },
+    // focus is checked before removing, since the removed item's delete trigger unmounts with it
     "FILE.DELETE": {
-      actions: ["removeFile"],
+      actions: ["restoreFocusAfterDelete", "removeFile", "announceFileDeleted"],
     },
     "FILES.CLEAR": {
-      actions: ["clearFiles"],
+      actions: ["restoreFocusAfterClear", "clearFiles"],
     },
     "REJECTED_FILES.CLEAR": {
       actions: ["clearRejectedFiles"],
     },
   },
+
+  exit: ["cancelFocusFrame"],
 
   effects: ["preventDocumentDrop", "trackLiveRegion"],
 
@@ -154,7 +158,7 @@ export const machine = createMachine<FileUploadSchema>({
         return callAll(addDomEvent(doc, "dragover", onDragOver, false), addDomEvent(doc, "drop", onDrop, false))
       },
       trackLiveRegion({ refs, scope }) {
-        // Inside the root so it is announced when the file upload is rendered within a modal dialog.
+        // inside the root, so it is still announced when the file upload is in a modal dialog
         const liveRegion = createLiveRegion({
           level: "polite",
           document: scope.getDoc(),
@@ -203,24 +207,16 @@ export const machine = createMachine<FileUploadSchema>({
         )
 
         const set = (files: File[]) => {
-          if (computed("multiple")) {
-            context.set("acceptedFiles", (prev) => [...prev, ...files])
-            context.set("rejectedFiles", rejectedFiles)
-            if (files.length) announce(params, (t) => t.filesAdded(files))
-            return
-          }
+          const multiple = computed("multiple")
+          const added = multiple ? files : files.slice(0, 1)
+          // a single-file upload keeps its current file when nothing new was accepted or rejected
+          if (!multiple && !added.length && !rejectedFiles.length) return
 
-          if (files.length) {
-            context.set("acceptedFiles", [files[0]])
-            context.set("rejectedFiles", rejectedFiles)
-            announce(params, (t) => t.filesAdded([files[0]]))
-            return
-          }
+          if (multiple) context.set("acceptedFiles", (prev) => [...prev, ...added])
+          else if (added.length) context.set("acceptedFiles", added)
+          context.set("rejectedFiles", rejectedFiles)
 
-          if (rejectedFiles.length) {
-            context.set("acceptedFiles", context.get("acceptedFiles"))
-            context.set("rejectedFiles", rejectedFiles)
-          }
+          if (added.length) announce(params, (t) => t.filesAdded(added))
         }
 
         const transform = prop("transformFiles")
@@ -238,48 +234,45 @@ export const machine = createMachine<FileUploadSchema>({
           set(acceptedFiles)
         }
       },
-      removeFile(params) {
-        const { context, event, scope } = params
+      removeFile({ context, event }) {
+        if (event.itemType === "rejected") {
+          context.set("rejectedFiles", (prev) => prev.filter((item) => !isFileEqual(item.file, event.file)))
+        } else {
+          context.set("acceptedFiles", (prev) => prev.filter((file) => !isFileEqual(file, event.file)))
+        }
+      },
+      announceFileDeleted(params) {
+        announce(params, (t) => t.fileDeleted(params.event.file))
+      },
+      restoreFocusAfterDelete({ context, event, scope, refs }) {
         const itemType = event.itemType === "rejected" ? "rejected" : "accepted"
         const files =
           itemType === "rejected" ? context.get("rejectedFiles").map((item) => item.file) : context.get("acceptedFiles")
         const index = files.findIndex((file) => isFileEqual(file, event.file))
-        if (index === -1) return
-
-        // only restore focus when the delete trigger of the removed item had it
-        const hadFocus = contains(dom.getItemDeleteTriggerEls(scope, itemType)[index], scope.getActiveElement())
-
-        if (itemType === "rejected") {
-          const rejectedFiles = context.get("rejectedFiles").filter((item) => !isFileEqual(item.file, event.file))
-          context.set("rejectedFiles", rejectedFiles)
-        } else {
-          context.set(
-            "acceptedFiles",
-            files.filter((file) => !isFileEqual(file, event.file)),
-          )
-        }
-
-        announce(params, (t) => t.fileDeleted(event.file))
-
-        if (!hadFocus) return
-        // once re-rendered, the next item sits at `index`, or the previous one if the last item was removed
-        raf(() => {
-          const triggers = dom.getItemDeleteTriggerEls(scope, itemType)
-          const target =
-            triggers[Math.min(index, triggers.length - 1)] || dom.getTriggerEl(scope) || dom.getDropzoneEl(scope)
+        // only when the removed item's own delete trigger has focus, so `api.deleteFile()` doesn't move it
+        const triggerEl = dom.getItemDeleteTriggerEls(scope, itemType)[index]
+        if (index === -1 || !contains(triggerEl, scope.getActiveElement())) return
+        // after the re-render, the next item sits at `index`, or the previous one if the last was removed
+        refs.get("focusFrame").request(() => {
+          const remaining = dom.getItemDeleteTriggerEls(scope, itemType)
+          const target = remaining[Math.min(index, remaining.length - 1)] ?? dom.getFallbackFocusEl(scope)
           target?.focus()
         })
       },
       clearRejectedFiles({ context }) {
         context.set("rejectedFiles", [])
       },
-      clearFiles({ context, scope }) {
-        // the clear trigger is hidden once there are no files, so move focus before it is lost
-        const hadFocus = contains(dom.getClearTriggerEl(scope), scope.getActiveElement())
+      clearFiles({ context }) {
         context.set("acceptedFiles", [])
         context.set("rejectedFiles", [])
-        if (!hadFocus) return
-        raf(() => (dom.getTriggerEl(scope) || dom.getDropzoneEl(scope))?.focus())
+      },
+      restoreFocusAfterClear({ scope, refs }) {
+        // the clear trigger hides once the list is empty
+        if (!contains(dom.getClearTriggerEl(scope), scope.getActiveElement())) return
+        refs.get("focusFrame").request(() => dom.getFallbackFocusEl(scope)?.focus())
+      },
+      cancelFocusFrame({ refs }) {
+        refs.get("focusFrame").cancel()
       },
     },
   },

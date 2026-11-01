@@ -1,5 +1,6 @@
 import type { EventObject, Machine, Service } from "@zag-js/core"
 import type { FileError, FileMimeType } from "@zag-js/file-utils"
+import type { AnimationFrame } from "@zag-js/dom-query"
 import type { LiveRegion } from "@zag-js/live-region"
 import type { CommonProperties, LocaleProperties, PropTypes } from "@zag-js/types"
 
@@ -53,13 +54,7 @@ export interface IntlTranslations {
   dropzone?: string | undefined
   itemPreview?: ((file: File) => string) | undefined
   deleteFile?: ((file: File) => string) | undefined
-  /**
-   * The message announced to screen readers when files are added.
-   */
   filesAdded?: ((files: File[]) => string) | undefined
-  /**
-   * The message announced to screen readers when a file is removed.
-   */
   fileDeleted?: ((file: File) => string) | undefined
 }
 
@@ -198,6 +193,7 @@ export interface FileUploadSchema {
   computed: Computed
   refs: {
     liveRegion: LiveRegion | null
+    focusFrame: AnimationFrame
   }
   event: EventObject
   action: string
